@@ -1,25 +1,50 @@
+use itertools::Itertools;
+
 advent_of_code::solution!(6);
 
+#[derive(Debug)]
 struct BoatRace {
-    time: u128,
-    record: u128,
+    time: u64,
+    record: u64,
 }
 
-fn numbers_from_input(input: &str) -> Vec<Vec<u128>> {
+fn part_one_numbers_from_input(input: &str) -> Vec<Vec<u64>> {
     input
         .split("\n")
         .map(|s| s.to_string())
         .map(|line| {
             line.split(" ")
-                .filter_map(|word| word.parse::<u128>().ok())
+                .filter_map(|word| word.parse::<u64>().ok())
                 .collect()
         })
-        .filter(|line: &Vec<u128>| !line.is_empty())
+        .filter(|line: &Vec<u64>| !line.is_empty())
         .collect()
 }
 
-fn races_from_numbers(numbers: &Vec<Vec<u128>>) -> Vec<BoatRace> {
-    println!("{:#?}", numbers);
+fn part_two_numbers_from_input(input: &str) -> Vec<u64> {
+    input
+        .split("\n")
+        .map(|s| s.to_string())
+        .map(|line| {
+            line.trim()
+                .split(":")
+                .skip(1)
+                .filter_map(|word| {
+                    word.split_whitespace()
+                        .into_iter()
+                        .join("")
+                        .trim()
+                        .parse::<u64>()
+                        .ok()
+                })
+                .collect::<Vec<_>>()
+        })
+        .flatten()
+        .collect()
+}
+
+fn races_from_numbers(numbers: &Vec<Vec<u64>>) -> Vec<BoatRace> {
+    // println!("{:#?}", numbers);
     (*numbers)
         .chunks(2)
         .map(|chunk| {
@@ -35,42 +60,37 @@ fn races_from_numbers(numbers: &Vec<Vec<u128>>) -> Vec<BoatRace> {
         .collect()
 }
 
-fn get_distance(time: u128, charge_time: u128) -> u128 {
+fn get_distance(time: u64, charge_time: u64) -> u64 {
     (time - charge_time) * charge_time
 }
 
-fn get_charge_times_faster_than_record(race: &BoatRace) -> Vec<u128> {
-    //Filter<Map<std::ops::Range<u128>>, _> {
+fn get_charge_times_faster_than_record(race: &BoatRace) -> u64 {
     (0..race.time)
         .map(|charge_time| get_distance(race.time, charge_time))
         .filter(|distance| *distance > race.record)
-        .collect()
+        // .inspect(|num| println!("This number should be higher than 233: {}", num))
+        .count() as u64
 }
 
-pub fn part_one(input: &str) -> Option<u128> {
-    let numbers = numbers_from_input(input);
+pub fn part_one(input: &str) -> Option<u64> {
+    let numbers = part_one_numbers_from_input(input);
     let races = races_from_numbers(&numbers);
 
     Some(
         races
             .iter()
             .map(|race| get_charge_times_faster_than_record(race))
-            .flatten()
-            .inspect(|num| println!("{}", num))
             .product(),
     )
-
-    // for (index, race) in races.iter().enumerate() {
-    //     println!("Getting values for race {}, where the time limit is {} ms and where the record is {} ms.", index, race.time, race.record);
-    //     let values = get_charge_times_faster_than_record(race);
-    //     println!("Times faster than record: {:#?}", values);
-    //     println!("Done.\n");
-    // }
-    // None
 }
 
-pub fn part_two(input: &str) -> Option<u128> {
-    None
+pub fn part_two(input: &str) -> Option<u64> {
+    let numbers = part_two_numbers_from_input(input);
+
+    let (time, record) = numbers.into_iter().tuples().next().unwrap();
+    let race = BoatRace { time, record };
+
+    Some(get_charge_times_faster_than_record(&race))
 }
 
 #[cfg(test)]
