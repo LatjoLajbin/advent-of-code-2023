@@ -1,10 +1,10 @@
 use core::hash::Hash;
-use std::collections::HashSet;
+use std::{cmp::Ordering, collections::HashMap};
 
 advent_of_code::solution!(7);
 
 #[repr(u32)]
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash, PartialOrd, Ord)]
 enum Card {
     A = 14,
     K = 13,
@@ -31,134 +31,178 @@ impl Card {
 }
 
 // TODO(ooooooooooooo.......)
-impl PartialEq for MyEnum {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (MyEnum::Var3(a, _), MyEnum::Var3(b, _)) => a == b,
-            _ => format!("{:?}", self) == format!("{:?}", other),
-        }
-    }
-}
+// impl PartialEq for Card {
+//     fn eq(&self, other: &Self) -> bool {
+//         let a = self.value();
+//         let b = other.value();
+//         a == b
+//     }
+// }
 
 // TODO(ooooooooooooo.......)
-impl Hash for Card {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            MyEnum::Var3(a, _) => a.hash(state),
-            _ => format!("{:?}", self).hash(state),
-        }
+// impl Hash for Card {
+//     fn hash<H: Hasher>(&self, state: &mut H) {
+//         let value = self.value();
+//         value.hash(state);
+//     }
+// }
+
+#[repr(u8)]
+#[derive(Copy, Clone)]
+enum Type {
+    FiveKind(u32) = 6,
+    FourKind(u32) = 5,
+    FullHouse(u32, u32) = 4,
+    ThreeKind(u32) = 3,
+    TwoPair(u32, u32) = 2,
+    Pair(u32) = 1,
+    HighCard(u32) = 0,
+}
+
+impl Type {
+    fn discriminant(&self) -> u8 {
+        unsafe { *<*const _>::from(self).cast::<u8>() }
     }
 }
 
-enum Type {
-    FiveKind(u32),
-    FourKind(u32),
-    FullHouse(u32, u32),
-    ThreeKind(u32),
-    TwoPair(u32, u32),
-    Pair(u32),
-    HighCard(u32),
-}
+#[derive(Debug, Eq, PartialEq)]
 struct Hand {
     cards: [Card; 5],
-    cards_set: HashSet<Card>,
+    cards_map: HashMap<Card, u32>,
+}
+
+impl PartialOrd for Hand {
+    fn partial_cmp(&self, other: &Hand) -> Option<Ordering> {
+        Some(
+            self.hand_type()
+                .discriminant()
+                .cmp(&other.hand_type().discriminant()),
+        )
+    }
 }
 
 impl Hand {
-    fn build(cards: [Card; 5]) -> Hand {
-        let set = cards.iter().fold(HashSet::new(), |mut acc, card| {
-            acc.insert(*card);
+    fn new(cards: [Card; 5]) -> Hand {
+        let map = cards.iter().fold(HashMap::new(), |mut acc, card| {
+            acc.entry(*card)
+                .and_modify(|counter| *counter += 1)
+                .or_insert(1);
             acc
         });
 
         Hand {
             cards,
-            cards_set: set,
+            cards_map: map,
         }
+    }
+
+    fn from_str(cards: &str) -> Hand {
+        Hand::new(
+            cards
+                .chars()
+                .map(|character| match character {
+                    'A' => Card::A,
+                    'K' => Card::K,
+                    'Q' => Card::Q,
+                    'J' => Card::J,
+                    'T' => Card::T,
+                    num => Card::Num(num.to_digit(10).unwrap()),
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        )
     }
 
     fn hand_type(&self) -> Type {
-        let amount_of_unique_values = self.cards_set.len();
+        let amount_of_unique_values = self.cards_map.len();
         let cards_clone = self.cards.clone();
-        let highest_value = cards_clone.iter().max().unwrap();
-        let second_highest_value = cards_clone
+        let highest_value_card = cards_clone.iter().max().unwrap();
+        let second_highest_value_card = cards_clone
             .iter()
-            .filter(|card| *card != highest_value)
+            .filter(|card| *card != highest_value_card)
             .max()
-            .unwrap_or(&'0');
+            .unwrap_or(&Card::Num(2));
 
-        if amount_of_unique_values == 1 {
-            Type::HighCard
-        } else if amount_of_unique_values == 2 {
-            Type::FourKind
-        }
+        let highest_value = highest_value_card.value();
 
-        Type::HighCard
-    }
+        let mut best_type = Type::HighCard(highest_value);
+        let mut pair_amount = 0;
 
-    fn five_kind(&self) -> bool {
-        match self.cards {
-            [head, tail @ ..] => tail.iter().all(|x| *x == head),
-            _ => false,
-        }
-    }
+        for (card, count) in self.cards_map.iter() {
+            let value = card.value();
 
-    fn four_kind(&self) -> bool {
-        self.amount_of_matching_cards() == 4
-    }
-
-    fn house(&self) -> bool {
-        false
-    }
-    fn three_kind(&self) -> bool {
-        self.amount_of_matching_cards() == 3
-    }
-    fn two_pair(&self) -> bool {
-        false
-    }
-    fn pair(&self) -> bool {
-        false
-    }
-    fn high_card(&self) -> bool {
-        false
-    }
-
-    fn amount_of_matching_cards(&self) -> u32 {
-        let mut matches = 0;
-        for i in 0..self.cards.len() {
-            let mut current_matches = 0;
-            for j in 0..self.cards.len() {
-                if i == j {
-                    continue;
+            match count {
+                5 => best_type = Type::FiveKind(value),
+                4 => best_type = Type::FourKind(value),
+                3 => {
+                    if self.cards_map.len() == 2 {
+                        best_type = Type::FullHouse(
+                            value,
+                            self.cards_map
+                                .keys()
+                                .find(|other_card| (*(*other_card)).value() != value)
+                                .unwrap()
+                                .value(),
+                        );
+                    } else {
+                        best_type = Type::ThreeKind(value);
+                    }
                 }
-                if self.cards[i] == self.cards[j] {
-                    current_matches = current_matches + 1;
+                2 => {
+                    if pair_amount == 0 {
+                        pair_amount += 1;
+                    } else {
+                        best_type = Type::TwoPair(
+                            value,
+                            self.cards_map
+                                .iter()
+                                .find(|other_entry| {
+                                    (*other_entry.0).value() != value && *other_entry.1 == 2
+                                })
+                                .unwrap()
+                                .0
+                                .value(),
+                        );
+                    }
                 }
-            }
-
-            if current_matches > matches {
-                matches = current_matches;
+                _ => (),
             }
         }
 
-        matches
-        // match self.cards {
-        //     [head, tail @ ..] => tail.iter().enumerate().ma(|x| *x == head),
-        //     _ => false,
-        // }
-        // match self.cards {
-        //     [all @ ..] => match all {
-        //         [head, tail @ ..] => tail.iter().fold(0, |mut matches, current| {
-        //         if current == head {
-        //             matches = matches + 1;
-        //         }
-        //     }),
-        //     _ => 0,
-        // }
+        best_type
     }
 }
 
+#[derive(Debug, Eq, PartialEq, PartialOrd)]
+struct Game {
+    hand: Hand,
+    bet: u32,
+}
+
+fn part_one_games_from_input(input: &str) -> Vec<Game> {
+    input
+        .split("\n")
+        .map(|s| s.to_string())
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let (hand, bet) = line.split_at(line.find(" ").unwrap());
+            Game {
+                hand: Hand::from_str(hand),
+                bet: u32::from_str_radix(bet, 10).unwrap(),
+            }
+        })
+        .collect()
+}
+
 pub fn part_one(input: &str) -> Option<u32> {
+    let mut games = part_one_games_from_input(input);
+
+    games.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    for game in games {
+        println!("{:?}", game.hand);
+    }
     None
 }
 
